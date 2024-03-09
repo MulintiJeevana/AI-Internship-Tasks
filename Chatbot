@@ -1,0 +1,74 @@
+import spacy
+import tensorflow as tf
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+import numpy as np
+import random
+
+# Sample dataset of conversations
+dataset = [
+    ("Hi there!", "Hello! How can I help you?"),
+    ("What services do you offer?", "We provide a variety of services. Can you specify what you're looking for?"),
+    ("How do I contact support?", "You can contact support by emailing support@example.com."),
+    # Add more sample conversations as needed
+]
+
+# Text preprocessing using spaCy
+nlp = spacy.load("en_core_web_sm")
+
+def preprocess_text(text):
+    doc = nlp(text)
+    tokens = [token.lemma_ for token in doc if not token.is_stop and token.is_alpha]
+    return ' '.join(tokens)
+
+# Process the dataset
+processed_dataset = [(preprocess_text(question), preprocess_text(answer)) for question, answer in dataset]
+
+# Tokenization and sequence padding
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts([qa[0] for qa in processed_dataset])
+
+vocab_size = len(tokenizer.word_index) + 1
+
+def tokenize_text(text):
+    sequences = tokenizer.texts_to_sequences([text])
+    return pad_sequences(sequences, padding='post')
+
+# Sequence-to-sequence model for response generation
+model = tf.keras.Sequential([
+    tf.keras.layers.Embedding(vocab_size, 128, input_length=20),
+    tf.keras.layers.LSTM(128),
+    tf.keras.layers.Dense(128, activation='relu'),
+    tf.keras.layers.Dense(vocab_size, activation='softmax')
+])
+
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+# Prepare training data
+input_sequences = []
+output_sequences = []
+
+for question, answer in processed_dataset:
+    input_sequences.append(tokenize_text(question)[0])
+    output_sequences.append(tokenize_text(answer)[0])
+
+input_sequences = np.array(input_sequences)
+output_sequences = np.array(output_sequences)
+
+# Train the model (for simplicity, you may need more data and epochs for a real-world application)
+model.fit(input_sequences, np.expand_dims(output_sequences, -1), epochs=10)
+
+# User interaction
+print("Chatbot: Hello! How can I assist you today?")
+
+while True:
+    user_input = input("You: ")
+    if user_input.lower() == 'exit':
+        print("Chatbot: Goodbye!")
+        break
+
+    tokenized_input = tokenize_text(preprocess_text(user_input))
+    predicted_sequence = model.predict(tokenized_input)[0]
+    predicted_answer = ' '.join([tokenizer.index_word[idx] for idx in np.argmax(predicted_sequence, axis=-1)])
+
+    print("Chatbot:", predicted_answer)
